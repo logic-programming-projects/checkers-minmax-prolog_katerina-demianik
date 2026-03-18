@@ -262,27 +262,56 @@ has_piece(Board, Player) :-
 
 % evaluate(+Board, +Player, -Score)
 % ++ ++, --
-% Позитивне значення = краще для Player
-% Шашка = 10 очок, дамка = 15 очок
+% Позитивне значення = краще для Player.
+%
+% Компоненти оцінки (лише статичні — без генерації ходів для швидкості):
+%   Матеріал:   шашка = 100 очок, дамка = 300 очок
+%   Центр:      +10 за клітинки стовпців 3-6 (контроль центру)
+%   Просування: +5 за кожен рядок вперед (заохочення руху)
+%
+% Мультипризначеність:
+%   (++, ++, --) — обчислює числову оцінку позиції
 evaluate(Board, Player, Score) :-
     opponent(Player, Opp),
-    count_pieces(Board, Player, MyP, MyK),
-    count_pieces(Board, Opp,    OppP, OppK),
-    Score is (MyP - OppP) * 10 + (MyK - OppK) * 15.
+    material_score(Board, Player, MyScore),
+    material_score(Board, Opp,    OppScore),
+    Score is MyScore - OppScore.
 
-% count_pieces(+Board, +Player, -Pawns, -Kings)
-% ++ ++, -- --
-count_pieces(Board, Player, Pawns, Kings) :-
-    findall(1, (
-        valid_pos(R, C), get_cell(Board, R, C, P),
-        belongs_to(P, Player), \+ is_king(P)
-    ), PL),
-    length(PL, Pawns),
-    findall(1, (
-        valid_pos(R, C), get_cell(Board, R, C, P),
-        belongs_to(P, Player), is_king(P)
-    ), KL),
-    length(KL, Kings).
+% material_score(+Board, +Player, -Score)
+% ++ ++, --
+% Підраховує матеріальну та позиційну оцінку для гравця
+material_score(Board, Player, Score) :-
+    findall(S, piece_value(Board, Player, S), Vals),
+    sumlist(Vals, Score).
+
+% piece_value(+Board, +Player, -Score)
+% ++ ++, --
+% Оцінює одну фігуру: матеріал + центр + просування
+piece_value(Board, Player, Score) :-
+    valid_pos(R, C),
+    get_cell(Board, R, C, P),
+    belongs_to(P, Player),
+    % Матеріальна вартість
+    ( is_king(P) -> MatVal = 300 ; MatVal = 100 ),
+    % Бонус за центральні стовпці (3-6)
+    ( (C >= 3, C =< 6) -> CentBonus = 10 ; CentBonus = 0 ),
+    % Бонус за просування вперед (тільки для пішаків)
+    (   is_king(P)
+    ->  AdvBonus = 0
+    ;   pawn_dr(Player, DR),
+        ( DR =:= 1
+        ->  AdvBonus is (R - 1) * 5   % чорні: далі від ряду 1 = краще
+        ;   AdvBonus is (8 - R) * 5   % білі:  далі від ряду 8 = краще
+        )
+    ),
+    Score is MatVal + CentBonus + AdvBonus.
+
+% sumlist(+List, -Sum): сумує список чисел
+% ++, --
+sumlist([], 0).
+sumlist([H|T], S) :-
+    sumlist(T, S1),
+    S is S1 + H.
 
 % ---- Конвертація для JSON ----
 

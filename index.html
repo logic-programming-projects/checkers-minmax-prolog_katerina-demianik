@@ -495,12 +495,18 @@ canvas.addEventListener('click', async (e) => {
   if (state.selected) {
     const m = state.highlights.find(mv => mv.to_row===r && mv.to_col===c);
     if (m) {
-      state.thinking = true;
+      // 1. Одразу застосовуємо хід людини локально і перемальовуємо
+      state.board = applyMoveLocally(state.board, m);
+      state.moveCount++;
       state.selected = null; state.highlights = [];
-      setStatus('Компʼютер думає…', 'thinking');
-      draw();
+      log('Ваш хід', 'user');
+      draw(); updateCounters();
+
+      // 2. Надсилаємо на сервер — тепер тільки чекаємо хід комп'ютера
+      state.thinking = true;
+      setStatus("Комп'ютер думає…", 'thinking');
       const data = await sendMove(m.from_row, m.from_col, m.to_row, m.to_col);
-      if (data) await processResponse(data, false);
+      if (data) await processResponse(data, true); // true = хід людини вже відображено
       state.thinking = false;
     } else {
       state.selected = null; state.highlights = [];
@@ -509,15 +515,39 @@ canvas.addEventListener('click', async (e) => {
   }
 });
 
-async function processResponse(data, aiOnly) {
+// applyMoveLocally: застосовує хід на локальній копії дошки (без запиту до сервера).
+// Використовується щоб одразу показати хід гравця, не чекаючи відповіді комп'ютера.
+function applyMoveLocally(board, move) {
+  const b = [...board];
+  const idx = (r, c) => (r-1)*8 + (c-1);
+
+  const piece = b[idx(move.from_row, move.from_col)];
+  b[idx(move.from_row, move.from_col)] = 'empty';
+
+  // Видаляємо взяті фігури
+  for (const cap of move.captures) {
+    b[idx(cap.row, cap.col)] = 'empty';
+  }
+
+  // Визначаємо чи стала шашка дамкою
+  let newPiece = piece;
+  if (piece === 'black' && move.to_row === 8) newPiece = 'black_king';
+  if (piece === 'white' && move.to_row === 1) newPiece = 'white_king';
+
+  b[idx(move.to_row, move.to_col)] = newPiece;
+  return b;
+}
+
+async function processResponse(data, humanAlreadyShown) {
   state.board     = data.board;
   state.moveCount = data.move_count;
 
-  if (!aiOnly) log('Ваш хід', 'user');
+  // Лог ходу людини — тільки якщо ще не показано
+  if (!humanAlreadyShown) log('Ваш хід', 'user');
   if (data.ai_move && data.ai_move !== null) {
     const m = data.ai_move;
     const cap = m.captures.length > 0 ? ` ✕${m.captures.length}` : '';
-    log(`Компʼютер: (${m.from_row},${m.from_col})→(${m.to_row},${m.to_col})${cap}`, 'ai');
+    log(`Комп'ютер: (${m.from_row},${m.from_col})→(${m.to_row},${m.to_col})${cap}`, 'ai');
   }
 
   draw(); updateCounters();

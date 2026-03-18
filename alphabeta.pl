@@ -3,7 +3,7 @@
 % alphabeta.pl — Алгоритм MinMax з Alpha-Beta відсіканням
 %
 % Реалізує пошук найкращого ходу для Компʼютер-гравця.
-% Глибина пошуку: 5 рівнів.
+% Глибина пошуку: адаптивна — 4 у дебюті (MC<6), 7 у середній грі.
 %
 % Умовні позначення оцінок:
 %   +inf (9999)  — виграш поточного гравця
@@ -14,9 +14,17 @@
 
 :- use_module(checkers).
 
-% Константи глибини та нескінченності
-search_depth(5).
+% Константа нескінченності
 inf(9999).
+
+% adaptive_depth(+MoveCount, -Depth)
+% ++ --
+% Адаптивна глибина пошуку залежно від фази гри.
+% Відповідає Python: SEARCH_DEPTH_OPENING=4, SEARCH_DEPTH_MAIN=7
+%   Дебют (перші 6 ходів): глибина 4 — щоб перший хід був швидким
+%   Середня гра та ендшпіль: глибина 7 — для сильної гри
+adaptive_depth(MC, Depth) :-
+    ( MC < 6 -> Depth = 4 ; Depth = 7 ).
 
 % ============================================================
 % best_move(+Board, +Player, +MoveCount, -BestMove)
@@ -31,7 +39,7 @@ inf(9999).
 best_move(Board, Player, MoveCount, BestMove) :-
     all_legal_moves(Board, Player, Moves),
     Moves \= [],
-    search_depth(Depth),
+    adaptive_depth(MoveCount, Depth),   % глибина залежить від фази гри
     inf(Inf), NegInf is -Inf,
     ab_best(Moves, Board, Player, MoveCount, Depth,
             NegInf, Inf, _, BestMove).
